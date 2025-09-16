@@ -24,7 +24,7 @@ authenticator = stauth.Authenticate(
     credentials,
     "threat_app",
     "abcdef",
-    cookie_expiry_days=1
+    cookie_expiry_days=1,
 )
 
 # --------------------------
@@ -101,4 +101,33 @@ if authentication_status:
                 }
             }
             params = {"key": api_key}
-            response = requests.post(endpoint, params=params, json
+            response = requests.post(endpoint, params=params, json=body)  # <-- fully closed here
+            if response.status_code == 200:
+                result = response.json()
+                if "matches" in result:
+                    return False, result["matches"]
+                else:
+                    return True, None
+            else:
+                return None, f"API Error: {response.status_code}"
+
+        url_input = st.text_input("Enter URL to check:")
+
+        if st.button("Check URL"):
+            if not url_input:
+                st.error("Please enter a URL.")
+            else:
+                safe, details = check_url_safety(url_input)
+                if safe is None:
+                    st.error(details)
+                elif safe:
+                    st.success("✅ This URL is safe.")
+                else:
+                    st.error("⚠️ This URL is unsafe!")
+                    st.json(details)
+
+else:
+    if authentication_status == False:
+        st.error("❌ Username/password is incorrect")
+    elif authentication_status is None:
+        st.warning("ℹ️ Please enter your username and password")
