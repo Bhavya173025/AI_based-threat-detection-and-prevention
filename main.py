@@ -3,8 +3,8 @@ import wikipedia
 import streamlit_authenticator as stauth
 import requests
 
-# Debug: Show loaded secrets for verification (remove in production)
-st.write("Secrets loaded:", st.secrets)
+# Debug: Show loaded secrets for verification (remove or comment out in production!)
+st.write("Secrets loaded:", dict(st.secrets))
 
 # --------------------------
 # HASHED PASSWORDS
@@ -35,14 +35,15 @@ st.title("Sentinel-Auth")
 # --------------------------
 # LOGIN FORM
 # --------------------------
-name, authentication_status, username = authenticator.login(fields={"form_name": "Login"}, location="main")
+name, authentication_status, username = authenticator.login(
+    fields={"form_name": "Login"}, location="main"
+)
 
 if authentication_status:
     st.sidebar.success(f"✅ Welcome {name}")
     authenticator.logout("Logout", "sidebar")
 
     section = st.sidebar.radio("Select Section", ["Wikipedia Chatbot", "Security Tools"])
-
     if section == "Wikipedia Chatbot":
         st.title("📚 Wikipedia Chatbot")
 
@@ -54,7 +55,9 @@ if authentication_status:
                 results = wikipedia.search(query)
                 if not results:
                     return "Sorry, I couldn't find anything on that topic."
-                summary = wikipedia.summary(results[0], sentences=2, auto_suggest=False, redirect=True)
+                summary = wikipedia.summary(
+                    results[0], sentences=2, auto_suggest=False, redirect=True
+                )
                 return summary
             except wikipedia.DisambiguationError as e:
                 return f"Your query is ambiguous, did you mean: {', '.join(e.options[:5])}?"
@@ -79,7 +82,12 @@ if authentication_status:
         st.title("🛡️ AI Threat Detection and Prevention")
         st.write("Check if a URL is safe using Google Safe Browsing API.")
 
-        api_key = st.secrets["GOOGLE_SAFE_BROWSING_API_KEY"]
+        # ---- Safely fetch the API key ----
+        try:
+            api_key = st.secrets["GOOGLE_SAFE_BROWSING_API_KEY"]
+        except KeyError:
+            st.error("Google Safe Browsing API key not found in secrets. Please add it in .streamlit/secrets.toml (local) or Streamlit Cloud Secrets UI.")
+            st.stop()
 
         def check_url_safety(url):
             endpoint = "https://safebrowsing.googleapis.com/v4/threatMatches:find"
@@ -101,21 +109,29 @@ if authentication_status:
                 }
             }
             params = {"key": api_key}
-            response = requests.post(endpoint, params=params, json=body)  # <-- fully closed here
-            if response.status_code == 200:
-                result = response.json()
-                if "matches" in result:
-                    return False, result["matches"]
+            try:
+                response = requests.post(endpoint, params=params, json=body)
+                if response.status_code == 200:
+                    result = response.json()
+                    if "matches" in result:
+                        return False, result["matches"]
+                    else:
+                        return True, None
+                elif response.status_code == 400:
+                    return None, "API Error 400: Bad request (invalid URL format or payload)"
+                elif response.status_code == 403:
+                    return None, "API Error 403: Forbidden. Check your API key, billing, and enablements."
                 else:
-                    return True, None
-            else:
-                return None, f"API Error: {response.status_code}"
+                    return None, f"API Error: {response.status_code}"
+            except Exception as e:
+                return None, f"Request failed: {str(e)}"
 
-        url_input = st.text_input("Enter URL to check:")
-
+        url_input = st.text_input("Enter URL to check (include http:// or https://):")
         if st.button("Check URL"):
             if not url_input:
                 st.error("Please enter a URL.")
+            elif not (url_input.startswith("http://") or url_input.startswith("https://")):
+                st.error("URL must start with http:// or https://")
             else:
                 safe, details = check_url_safety(url_input)
                 if safe is None:
